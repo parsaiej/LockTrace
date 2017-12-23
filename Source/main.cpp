@@ -1,75 +1,70 @@
 #include <iostream>
 #include <fstream>
-#include <math.h>
-#include <stdlib.h>
+#include <random>
 
-class vec3 {
-public:
-	vec3() {}
-	vec3(float e0, float e1, float e2) { e[0] = e0; e[1] = e1; e[2] = e2; }
+#include "Sphere.h"
+#include "HitableList.h"
+#include "Camera.h"
+#include "Material.h"
 
-	inline float x() const { return e[0]; }
-	inline float y() const { return e[1]; }
-	inline float z() const { return e[2]; }
-	inline float r() const { return e[0]; }
-	inline float g() const { return e[1]; }
-	inline float b() const { return e[2]; }
-
-	inline const vec3& operator+() const { return *this; }
-	inline vec3		   operator-() const { return vec3(-e[0], -e[1], -e[2]); }
-	inline float       operator[](int i) const { return e[i]; }
-	inline float&      operator[](int i) { return e[i]; }
-
-	inline vec3& operator+=(const vec3 &rhs);
-	inline vec3& operator-=(const vec3 &rhs);
-	inline vec3& operator*=(const vec3 &rhs);
-	inline vec3& operator/=(const vec3 &rhs);
-	inline vec3& operator*=(const float t);
-	inline vec3& operator/=(const float t);
-
-	inline float length()    const { return sqrt(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]); }
-	inline float sprLength() const { return e[0] * e[0] + e[1] * e[1] + e[2] * e[2];	   }
-	inline void normalize();
-		
-	float e[3];
-};
-
-inline std::istream& operator>>(std::istream &is, vec3 &t) {
-	is >> t.e[0] >> t.e[1] >> t.e[2];
-	return is;
-}
-
-inline std::ostream& operator<<(std::ostream &os, const vec3 &t) {
-	os << t.e[0] << " " << t.e[1] << " " << t.e[2];
-}
-
-inline void vec3::normalize() {
-	float k = 1.0 / sqrt(e[0]*e[0] + e[1]*e[1] + e[2]*e[2]);
-	e[0] *= k; e[1] *= k; e[2] *= k;
-}
-
-inline vec3 operator+(const vec3 &v1, const vec3 &v2) {
-	return vec3(v1.e[0] + v2.e[0], v1.e[1] + v2.e[1], v1.e[2] + v2.e[2]);
+Vec3 Color(const Ray& _r, Hitable *_world, int _depth) {
+	HitRecord record;
+	if (_world->Hit(_r, 0.001, FLT_MAX, record)) {
+		Ray scattered;
+		Vec3 attenuation;
+		if (_depth < 50 && record.material->Scatter(_r, record, attenuation, scattered)) {
+			return attenuation * Color(scattered, _world, _depth + 1);
+		} 
+		else {
+			return Vec3(0, 0, 0);
+		}
+	} 
+	else {
+		Vec3 unitDirection = unit_vector(_r.Direction());
+		float t = 0.5 * (unitDirection.y() + 1.0);
+		return (1.0 - t) * Vec3(1.0, 1.0, 1.0) + t * Vec3(0.5, 0.7, 1.0);
+	}
 }
 
 int main() {
 
-	int nx = 200;
-	int ny = 100;
+	int nx = 400;
+	int ny = 200;
+	int ns = 100;
+
+	std::random_device rd;
+	std::mt19937 mt(rd());
+	std::uniform_real_distribution<float> dist(0.0, 1.0);
 
 	std::ofstream image;
 	image.open("image.ppm");
 	image << "P3\n" << nx << " " << ny << "\n255\n";
 
+	Hitable *list[4];
+	list[0] = new Sphere(Vec3(0, 0, -1),      0.5, new Lambertian(Vec3(0.8, 0.3, 0.3)));
+	list[1] = new Sphere(Vec3(0, -100.5, -1), 100, new Lambertian(Vec3(0.8, 0.8, 0.0)));
+	list[2] = new Sphere(Vec3(1, 0, -1),      0.5, new Metal(Vec3(0.8, 0.6, 0.2)));
+	list[3] = new Sphere(Vec3(-1, 0, -1),     0.5, new Metal(Vec3(0.8, 0.8, 0.8)));
+	Hitable *world = new HitableList(list, 4);
+
+	Camera cam;
 	for (int j = ny - 1; j >= 0; j--) {
 		for (int i = 0; i < nx; i++) {
-			float r = float(i) / float(nx);
-			float g = float(j) / float(ny);
-			float b = 0.2f;
+			Vec3 c(0, 0, 0);
+			
+			for (int s = 0; s < ns; s++) {
+				float u = float(i + dist(mt)) / float(nx);
+				float v = float(j + dist(mt)) / float(ny);
 
-			int ir = int(255.99 * r);
-			int ig = int(255.99 * g);
-			int ib = int(255.99 * b);
+				Ray r = cam.GetRay(u, v);
+				c += Color(r, world, 0);
+			}
+			c /= float(ns);
+			c = Vec3(sqrt(c[0]), sqrt(c[1]), sqrt(c[2]));
+
+			int ir = int(255.99 * c[0]);
+			int ig = int(255.99 * c[1]);
+			int ib = int(255.99 * c[2]);
 			image << ir << " " << ig << " " << ib << "\n";
 		}
 	}
